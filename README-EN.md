@@ -10,7 +10,7 @@ It only pulls arrows whose path is not blocked by another arrow, one at a time, 
 
 1. Build with `gmake` (requires Theos) → `.theos/obj/debug/LCAutoClearArrows.dylib`
 2. Put `LCAutoClearArrows.dylib` into the Arrows tweak folder in LiveContainer and launch
-3. An `AUTO ON x1` button appears at the bottom-left. Arrows are removed automatically once a level starts
+3. An `AUTO OFF` button appears at the bottom-left (always OFF on launch). Tap it to turn ON and arrows are removed automatically during a level
 
 | Action | Effect |
 | --- | --- |
@@ -18,7 +18,7 @@ It only pulls arrows whose path is not blocked by another arrow, one at a time, 
 | Long press | Cycle speed (`x1` → `x2` → `x4` → `MAX`) |
 | Drag | Move the button |
 
-Settings are stored in the app's NSUserDefaults. Diagnostic log: `Documents/lcac-debug.log`.
+The speed is stored in the app's NSUserDefaults (ON/OFF is not saved; always OFF on launch). Diagnostic log: `Documents/lcac-debug.log`.
 
 ## How it works
 

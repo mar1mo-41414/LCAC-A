@@ -10,7 +10,7 @@ LiveContainer 上で動かすパズルゲーム **Arrows** (`com.ecffri.arrows`,
 
 1. `gmake` でビルド (Theos 必須) → `.theos/obj/debug/LCAutoClearArrows.dylib`
 2. LiveContainer で Arrows の Tweak フォルダに `LCAutoClearArrows.dylib` を入れて起動
-3. 画面左下に `AUTO ON x1` ボタンが出る。レベルが始まると勝手に矢印が抜けていく
+3. 画面左下に `AUTO OFF` ボタンが出る (起動直後は常に OFF)。タップで ON にするとレベル中の矢印が勝手に抜けていく
 
 | 操作 | 動作 |
 | --- | --- |
@@ -18,7 +18,7 @@ LiveContainer 上で動かすパズルゲーム **Arrows** (`com.ecffri.arrows`,
 | 長押し | 速度切り替え (`x1` → `x2` → `x4` → `MAX`) |
 | ドラッグ | ボタン移動 |
 
-設定 (ON/OFF・速度) はアプリの NSUserDefaults に保存されます。
+速度はアプリの NSUserDefaults に保存されます (ON/OFF は保存せず、起動時は常に OFF)。
 診断ログは対象アプリの `Documents/lcac-debug.log` に出ます。
 
 ## 仕組み

@@ -10,7 +10,6 @@
 // こちらの CADisplayLink も同じスレッドで「フレームとフレームの間」に走る。
 // よって ECS (Entitas) のエンティティを触ってもゲーム側と競合しない。
 
-static NSString *const kEnabledKey = @"LCAC.enabled";
 static NSString *const kSpeedKey = @"LCAC.speedIndex";
 
 typedef struct {
@@ -47,7 +46,8 @@ static const NSInteger kSpeedCount = sizeof(kSpeeds) / sizeof(kSpeeds[0]);
 - (instancetype)init {
     if ((self = [super init])) {
         NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
-        _enabled = [d objectForKey:kEnabledKey] ? [d boolForKey:kEnabledKey] : YES;
+        // 起動直後は常に OFF (ON/OFF は保存しない。速度だけ保存)。
+        _enabled = NO;
         _speedIndex = MIN(MAX([d integerForKey:kSpeedKey], 0), kSpeedCount - 1);
     }
     return self;
@@ -145,7 +145,6 @@ static const NSInteger kSpeedCount = sizeof(kSpeeds) / sizeof(kSpeeds[0]);
 
 - (void)toggle {
     self.enabled = !self.enabled;
-    [NSUserDefaults.standardUserDefaults setBool:self.enabled forKey:kEnabledKey];
     [self refreshButton];
     ACLog(@"toggle -> %d", self.enabled);
 }
