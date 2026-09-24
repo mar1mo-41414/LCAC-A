@@ -80,4 +80,8 @@
   - `FindFirstObjectByType` は引数 1 個の候補にジェネリック `<T>(FindObjectsInactive)` もあるため、
     `il2cpp_class_get_methods` で「非ジェネリック・引数 1」を選ぶ。System.Type は `il2cpp_type_get_object(il2cpp_class_get_type(klass))`。
   - 選択中の日が遊べない (ボタン非活性) 場合は LEVEL を OFF にして停止 (勝手に通常レベルへ切り替えない)。
-- 実機未検証 (クリア後に次の未クリア日が自動選択される前提。スクショ上は完了済み 9 日の次の 10 日が選択されていた)。
+- 実機: 1 日目 (2025/161) は開始・クリアできたが、2 回目で `selected day 0/0 not playable` → 停止。
+  クリア後のチャレンジ画面は作り直され、勝利演出の完了 (`OnAnimComplete` → `DailyChallengePageView.Selected`) まで
+  `_year/_dayOfYear` が 0 のまま。そこで「遊べない」と誤判定していた。
+- 修正: `_year == 0` は「選択待ち」として 0.5 秒おきに再試行。選択待ち/非活性が 8 秒続いた時だけ LEVEL を OFF。
+- 実機未検証。

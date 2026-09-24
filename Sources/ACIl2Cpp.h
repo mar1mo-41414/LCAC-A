@@ -33,6 +33,7 @@ typedef NS_ENUM(NSInteger, ACStartResult) {
     ACStartedMain,           // ホームのプレイ (通常レベル)
     ACStartedDaily,          // チャレンジ画面のプレイ (選択中の日)
     ACStartDailyUnavailable, // チャレンジ画面だが選択中の日が遊べない (クリア済み・未来など)
+    ACStartDailyNotReady,    // チャレンジ画面がまだ日を選んでいない (勝利演出中など。_year == 0)
 };
 
 /// メインメニューで「今表示されている画面のプレイボタン」と同じ処理を行う。

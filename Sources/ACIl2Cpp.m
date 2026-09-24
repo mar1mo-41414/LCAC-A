@@ -374,6 +374,10 @@ ACStartResult ACIl2CppStartNext(void) {
         int year = *(int *)((uint8_t *)daily + kDailyYearOffset);
         int day = *(int *)((uint8_t *)daily + kDailyDayOffset);
         void *playButton = *(void **)((uint8_t *)daily + kDailyPlayButtonOffset);
+        if (year == 0) {
+            // クリア直後は画面が作り直され、勝利演出の完了 (OnAnimComplete) 後に日が選択される。
+            return ACStartDailyNotReady;
+        }
         if (!ACIsButtonInteractable(playButton)) {
             ACLog(@"daily: selected day %d/%d not playable", year, day);
             return ACStartDailyUnavailable;

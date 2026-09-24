@@ -39,6 +39,10 @@ static const CFTimeInterval kAwardCloseDelay = 1.5;
 static const CFTimeInterval kMenuPopupCloseDelay = 1.5;
 // メニュー上でポップアップがこれ以上居座ったら PopupService.CloseAll() する。
 static const CFTimeInterval kMenuPopupGiveUpSeconds = 6.0;
+// チャレンジ画面で遊べる日が選ばれないまま、これだけ経ったら諦めて LEVEL を OFF にする。
+static const CFTimeInterval kDailyGiveUpSeconds = 8.0;
+// 日の選択待ちの間の再試行間隔。
+static const CFTimeInterval kDailyRetrySeconds = 0.5;
 
 @interface ACController : NSObject
 @property (nonatomic, strong) CADisplayLink *link;
@@ -61,6 +65,7 @@ static const CFTimeInterval kMenuPopupGiveUpSeconds = 6.0;
 @property (nonatomic) CFTimeInterval lastAwardCheck;
 @property (nonatomic) CFTimeInterval menuPopupSince;
 @property (nonatomic) CFTimeInterval lastCloseAll;
+@property (nonatomic) CFTimeInterval dailyWaitSince; // チャレンジ画面で「日未選択/遊べない」が続いている開始時刻
 @end
 
 @implementation ACController
@@ -150,14 +155,25 @@ static const CFTimeInterval kMenuPopupGiveUpSeconds = 6.0;
     if (now - self.menuStableSince < kMenuSettleSeconds) return;
     if (now - self.lastStartCall < kStartCooldownSeconds) return;
 
+    ACStartResult result = ACIl2CppStartNext();
+    if (result == ACStartDailyNotReady || result == ACStartDailyUnavailable) {
+        // チャレンジ画面で日の選択待ち (勝利演出中) or 遊べない日が選択中。
+        // 演出直後は一瞬こうなるので、しばらく短い間隔で再試行してから諦める。
+        if (self.dailyWaitSince == 0) self.dailyWaitSince = now;
+        if (now - self.dailyWaitSince >= kDailyGiveUpSeconds) {
+            // その月を全部クリアした等 → 勝手に通常レベルへ切り替えず停止。
+            ACLog(@"level mode stopped: no playable daily challenge selected (result=%ld)", (long)result);
+            self.dailyWaitSince = 0;
+            self.levelPresetIndex = 0;
+            [self refreshButtons];
+            return;
+        }
+        self.lastStartCall = now - kStartCooldownSeconds + kDailyRetrySeconds; // 0.5 秒後に再試行
+        return;
+    }
+    self.dailyWaitSince = 0;
     self.lastStartCall = now;
     self.menuStableSince = 0;
-    if (ACIl2CppStartNext() == ACStartDailyUnavailable) {
-        // チャレンジ画面で遊べる日が選ばれていない (その月を全部クリアした等) → 勝手に別モードへ行かず停止。
-        ACLog(@"level mode stopped: no playable daily challenge selected");
-        self.levelPresetIndex = 0;
-        [self refreshButtons];
-    }
 }
 
 /// レベル間で進行を止めるポップアップを片付ける。
