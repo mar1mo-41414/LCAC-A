@@ -44,4 +44,15 @@
   連打防止に 4 秒のクールダウン。サービス実体は `XxxServiceComponent.Value (@0x10)` を読み、
   オブジェクト先頭の klass が期待クラスと一致する時だけ呼ぶ。
 - モード: OFF / ∞ / 10 / 20 / 50。クリア回数は `isLevelComplete` の立ち上がりで数える。
+- 実機確認: 右下固定・回転追従・# ボタンとの非干渉・自動進行・回数表示すべて OK。
+  ただし 5/10 で実績解除ポップアップ (「初挑戦で10レベルクリアして完璧なプレイを獲得！」+ 続ける) で停止。
+
+## 2026-09-24 実績解除ポップアップの自動クローズ
+- `LevelCompleteView.GoToMainMenu` → `AwardsExtensions.TryAutoOpenAwardPopup` で出るポップアップ。
+  PopupService 管理外で、メインメニューもまだ開いていないため「メニュー待機」判定に入らず止まっていた。
+- 「続ける」= `AwardPopupButtonsUiView.Close()` は `_canClose (@0x51)` なら自分の UiEntity の `isOpen = false` にするだけ。
+  閉じると `AwardPopupAutoOpenContinueSystem` (UiMatcher.Open の除去に反応) が次の実績 or `OpenMainMenu` を開く。
+- 実装: プレイ中以外、UiContext.GetEntities() から `isOpen && hasGameEntityRef && gameEntityRef.Value.Entity.isAward`
+  の UiEntity を探し、出現から 1.5 秒後に `set_isOpen(false)`。
+- 保険: メインメニュー上で PopupService のポップアップが 6 秒以上居座ったら `PopupService.CloseAll()`。
 - 実機未検証。

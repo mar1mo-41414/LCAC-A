@@ -33,6 +33,10 @@ static const NSInteger kLevelPresetCount = sizeof(kLevelPresets) / sizeof(kLevel
 static const CFTimeInterval kMenuSettleSeconds = 1.5;
 // StartGame を呼んだ後、再度呼ぶまでの最低間隔。
 static const CFTimeInterval kStartCooldownSeconds = 4.0;
+// 実績ポップアップが出てから閉じるまでの待ち (ボタン表示演出が終わるまで Close が効かない想定)。
+static const CFTimeInterval kAwardCloseDelay = 1.5;
+// メニュー上でポップアップがこれ以上居座ったら PopupService.CloseAll() する。
+static const CFTimeInterval kMenuPopupGiveUpSeconds = 6.0;
 
 @interface ACController : NSObject
 @property (nonatomic, strong) CADisplayLink *link;
@@ -50,6 +54,10 @@ static const CFTimeInterval kStartCooldownSeconds = 4.0;
 @property (nonatomic) BOOL prevLevelComplete;
 @property (nonatomic) CFTimeInterval menuStableSince;
 @property (nonatomic) CFTimeInterval lastStartCall;
+@property (nonatomic) CFTimeInterval awardSeenSince;
+@property (nonatomic) CFTimeInterval lastAwardCheck;
+@property (nonatomic) CFTimeInterval menuPopupSince;
+@property (nonatomic) CFTimeInterval lastCloseAll;
 @end
 
 @implementation ACController
@@ -122,6 +130,11 @@ static const CFTimeInterval kStartCooldownSeconds = 4.0;
         return;
     }
 
+    BOOL inPlay = st.levelPlaying && !st.levelComplete && !st.levelFailed;
+    if (!inPlay) {
+        [self dismissBlockingPopups:st now:now];
+    }
+
     BOOL menuIdle = st.mainMenuActive && !st.levelPlaying && !st.startPending && !st.popupOpen;
     if (!menuIdle) {
         self.menuStableSince = 0;
@@ -134,6 +147,34 @@ static const CFTimeInterval kStartCooldownSeconds = 4.0;
     self.lastStartCall = now;
     self.menuStableSince = 0;
     ACIl2CppStartGame();
+}
+
+/// レベル間で進行を止めるポップアップを片付ける。
+- (void)dismissBlockingPopups:(ACGameState)st now:(CFTimeInterval)now {
+    // 実績解除 (「初挑戦で10レベルクリア…」+ 続ける) — 0.5 秒おきに確認。
+    if (now - self.lastAwardCheck >= 0.5) {
+        self.lastAwardCheck = now;
+        if (ACIl2CppAwardPopups(NO) > 0) {
+            if (self.awardSeenSince == 0) self.awardSeenSince = now;
+            if (now - self.awardSeenSince >= kAwardCloseDelay) {
+                ACIl2CppAwardPopups(YES);
+                self.awardSeenSince = 0; // 次の実績が連続で出たらまた待つ
+            }
+        } else {
+            self.awardSeenSince = 0;
+        }
+    }
+
+    // メインメニュー上で PopupService のポップアップが居座っている場合の最終手段。
+    if (st.mainMenuActive && st.popupOpen) {
+        if (self.menuPopupSince == 0) self.menuPopupSince = now;
+        if (now - self.menuPopupSince >= kMenuPopupGiveUpSeconds && now - self.lastCloseAll >= kMenuPopupGiveUpSeconds) {
+            self.lastCloseAll = now;
+            ACIl2CppCloseAllPopups();
+        }
+    } else {
+        self.menuPopupSince = 0;
+    }
 }
 
 #pragma mark - Buttons

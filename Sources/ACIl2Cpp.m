@@ -74,6 +74,14 @@ static Il2CppClass *gPopupServiceClass;
 static Il2CppClass *gMainMenuServiceClass;
 static const MethodInfo *m_Popup_HasAnyPopupOrDialogOpen;
 static const MethodInfo *m_MainMenu_StartGame;
+static const MethodInfo *m_Popup_CloseAll;
+static const MethodInfo *m_UiCtx_GetEntities;         // Entitas.Context<UiEntity>.GetEntities()
+static const MethodInfo *m_UiEnt_isOpen;
+static const MethodInfo *m_UiEnt_setIsOpen;
+static const MethodInfo *m_UiEnt_hasGameEntityRef;
+static const MethodInfo *m_UiEnt_gameEntityRef;       // -> GameEntityRefComponent (.Value @0x10)
+static const MethodInfo *m_Ref_get_Entity;            // GameEntityRef.get_Entity()
+static const MethodInfo *m_Ent_isAward;
 
 static BOOL gResolved = NO;
 
@@ -143,8 +151,10 @@ BOOL ACIl2CppResolve(void) {
     Il2CppClass *serviceContext = p_class_from_name(image, "", "ServiceContext");
     gPopupServiceClass = p_class_from_name(image, "", "PopupService");
     gMainMenuServiceClass = p_class_from_name(image, "", "MainMenuService");
+    Il2CppClass *uiEntity = p_class_from_name(image, "", "UiEntity");
+    Il2CppClass *gameEntityRef = p_class_from_name(image, "", "GameEntityRef");
     if (!contexts || !gameContext || !gameEntity || !uiContext || !serviceContext
-        || !gPopupServiceClass || !gMainMenuServiceClass) {
+        || !gPopupServiceClass || !gMainMenuServiceClass || !uiEntity || !gameEntityRef) {
         ACLog(@"class not found: Contexts=%p GameContext=%p GameEntity=%p UiContext=%p ServiceContext=%p PopupService=%p MainMenuService=%p",
               contexts, gameContext, gameEntity, uiContext, serviceContext, gPopupServiceClass, gMainMenuServiceClass);
         return NO;
@@ -178,6 +188,14 @@ BOOL ACIl2CppResolve(void) {
     m_Svc_get_mainMenuService = ACFindMethod(serviceContext, "get_mainMenuService", 0);
     m_Popup_HasAnyPopupOrDialogOpen = ACFindMethod(gPopupServiceClass, "HasAnyPopupOrDialogOpen", 0);
     m_MainMenu_StartGame = ACFindMethod(gMainMenuServiceClass, "StartGame", 0);
+    m_Popup_CloseAll = ACFindMethod(gPopupServiceClass, "CloseAll", 0);
+    m_UiCtx_GetEntities = ACFindMethod(uiContext, "GetEntities", 0);
+    m_UiEnt_isOpen = ACFindMethod(uiEntity, "get_isOpen", 0);
+    m_UiEnt_setIsOpen = ACFindMethod(uiEntity, "set_isOpen", 1);
+    m_UiEnt_hasGameEntityRef = ACFindMethod(uiEntity, "get_hasGameEntityRef", 0);
+    m_UiEnt_gameEntityRef = ACFindMethod(uiEntity, "get_gameEntityRef", 0);
+    m_Ref_get_Entity = ACFindMethod(gameEntityRef, "get_Entity", 0);
+    m_Ent_isAward = ACFindMethod(gameEntity, "get_isAward", 0);
 
     const MethodInfo *all[] = {
         m_Contexts_get_game, m_Ctx_GetEntities,
@@ -187,7 +205,9 @@ BOOL ACIl2CppResolve(void) {
         m_Ent_isTryToMove, m_Ent_hasAutoRemoveTimer, m_Ent_ReplaceAutoRemoveTimer,
         m_Contexts_get_ui, m_Contexts_get_service, m_Game_hasStartLevel, m_Game_hasTryStartLevel,
         m_Ui_isActiveMainMenuScreen, m_Svc_get_popupService, m_Svc_get_mainMenuService,
-        m_Popup_HasAnyPopupOrDialogOpen, m_MainMenu_StartGame,
+        m_Popup_HasAnyPopupOrDialogOpen, m_MainMenu_StartGame, m_Popup_CloseAll,
+        m_UiCtx_GetEntities, m_UiEnt_isOpen, m_UiEnt_setIsOpen, m_UiEnt_hasGameEntityRef,
+        m_UiEnt_gameEntityRef, m_Ref_get_Entity, m_Ent_isAward,
     };
     for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++) {
         if (!all[i] || !all[i]->methodPointer) {
@@ -286,6 +306,47 @@ BOOL ACIl2CppStartGame(void) {
     }
     ((void (*)(void *, const MethodInfo *))m_MainMenu_StartGame->methodPointer)(mainMenu, m_MainMenu_StartGame);
     ACLog(@"StartGame called");
+    return YES;
+}
+
+NSInteger ACIl2CppAwardPopups(BOOL close) {
+    if (!gResolved) return 0;
+    void *contexts = ACGetContexts();
+    if (!contexts) return 0;
+    void *ui = CallObj(m_Contexts_get_ui, contexts);
+    if (!ui) return 0;
+    Il2CppArray *entities = (Il2CppArray *)CallObj(m_UiCtx_GetEntities, ui);
+    if (!entities) return 0;
+
+    NSInteger found = 0;
+    for (uintptr_t i = 0; i < entities->max_length; i++) {
+        void *e = entities->vector[i];
+        if (!e) continue;
+        if (!CallBool(m_UiEnt_isOpen, e)) continue;
+        if (!CallBool(m_UiEnt_hasGameEntityRef, e)) continue;
+        void *component = CallObj(m_UiEnt_gameEntityRef, e);
+        void *ref = component ? *(void **)((uint8_t *)component + 0x10) : NULL;
+        void *gameEntity = ref ? CallObj(m_Ref_get_Entity, ref) : NULL;
+        if (!gameEntity || !CallBool(m_Ent_isAward, gameEntity)) continue;
+        found++;
+        if (close) {
+            // AwardPopupButtonsUiView.Close() と同じ: 自分の UiEntity の isOpen を下ろすだけ。
+            // 以降は AwardPopupAutoOpenContinueSystem が次の実績 or メインメニューを開く。
+            ((void (*)(void *, BOOL, const MethodInfo *))m_UiEnt_setIsOpen->methodPointer)(e, NO, m_UiEnt_setIsOpen);
+        }
+    }
+    if (found && close) ACLog(@"closed %ld award popup(s)", (long)found);
+    return found;
+}
+
+BOOL ACIl2CppCloseAllPopups(void) {
+    if (!gResolved) return NO;
+    void *contexts = ACGetContexts();
+    if (!contexts) return NO;
+    void *popup = ACGetService(contexts, m_Svc_get_popupService, gPopupServiceClass);
+    if (!popup) return NO;
+    ((void (*)(void *, const MethodInfo *))m_Popup_CloseAll->methodPointer)(popup, m_Popup_CloseAll);
+    ACLog(@"PopupService.CloseAll called");
     return YES;
 }
 

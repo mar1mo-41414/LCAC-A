@@ -31,4 +31,11 @@ ACGameState ACIl2CppQueryState(void);
 /// メインメニューのプレイボタンと同じ処理 (MainMenuService.StartGame) で次のレベルを開始する。
 BOOL ACIl2CppStartGame(void);
 
+/// 開いている実績解除ポップアップ (UiEntity.isOpen && gameEntityRef → GameEntity.isAward) の数を返す。
+/// close が YES なら「続ける」ボタンと同じく isOpen = false にして閉じる。
+NSInteger ACIl2CppAwardPopups(BOOL close);
+
+/// PopupService.CloseAll() (メニュー上で居座るポップアップの最終手段)。
+BOOL ACIl2CppCloseAllPopups(void);
+
 NS_ASSUME_NONNULL_END
