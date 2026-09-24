@@ -15,4 +15,20 @@ BOOL ACIl2CppResolve(void);
 /// 戻り値: 積んだら YES。
 BOOL ACIl2CppStep(void);
 
+typedef struct {
+    BOOL ready;            // il2cpp 解決済み && Contexts 生成済み
+    BOOL levelPlaying;     // GameContext.isLevelPlaying
+    BOOL levelComplete;    // GameContext.isLevelComplete
+    BOOL levelFailed;      // GameContext.isLevelFailed
+    BOOL startPending;     // StartLevel / TryStartLevel 要求が処理待ち
+    BOOL mainMenuActive;   // UiContext.isActiveMainMenuScreen
+    BOOL popupOpen;        // PopupService.HasAnyPopupOrDialogOpen()
+} ACGameState;
+
+/// 現在のゲーム状態を読む (読むだけで何も変更しない)。
+ACGameState ACIl2CppQueryState(void);
+
+/// メインメニューのプレイボタンと同じ処理 (MainMenuService.StartGame) で次のレベルを開始する。
+BOOL ACIl2CppStartGame(void);
+
 NS_ASSUME_NONNULL_END

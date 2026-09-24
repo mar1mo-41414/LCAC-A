@@ -10,15 +10,28 @@ It only pulls arrows whose path is not blocked by another arrow, one at a time, 
 
 1. Build with `gmake` (requires Theos) → `.theos/obj/debug/LCAutoClearArrows.dylib`
 2. Put `LCAutoClearArrows.dylib` into the Arrows tweak folder in LiveContainer and launch
-3. An `AUTO OFF` button appears at the bottom-left (always OFF on launch). Tap it to turn ON and arrows are removed automatically during a level
+3. Two buttons appear at the bottom-right (above the game's # button), both OFF on launch.
+   They are re-anchored to the bottom-right when the orientation changes.
+
+### AUTO button (auto-clear arrows)
 
 | Action | Effect |
 | --- | --- |
-| Tap | Toggle auto-clear ON / OFF |
+| Tap | ON / OFF (turning OFF also stops auto-level) |
 | Long press | Cycle speed (`x1` → `x2` → `x4` → `MAX`) |
-| Drag | Move the button |
 
-The speed is stored in the app's NSUserDefaults (ON/OFF is not saved; always OFF on launch). Diagnostic log: `Documents/lcac-debug.log`.
+### LEVEL button (auto-advance levels)
+
+| Action | Effect |
+| --- | --- |
+| Tap | Cycle `OFF` → `∞` (until stopped) → `10` → `20` → `50` → `OFF` |
+| Long press | Stop immediately |
+
+- Turning LEVEL on also turns AUTO on.
+- After a clear, once the main menu has been idle for 1.5 s (no popups), the next level is started the same way the Play button does.
+- Shows `LEVEL 3/10` or `LEVEL ∞ (3)`. When the count is reached both AUTO and LEVEL turn OFF.
+
+Only the speed is stored in NSUserDefaults (always OFF on launch). Diagnostic log: `Documents/lcac-debug.log`.
 
 ## How it works
 
@@ -27,4 +40,6 @@ The speed is stored in the app's NSUserDefaults (ON/OFF is not saved; always OFF
 - The game ships a dormant auto-remove mechanism: `ArrowAutoRemoveSystem` (always registered)
   removes any arrow carrying an `AutoRemoveTimer` once the timer expires and it is not blocked.
 - The tweak, from a main-thread `CADisplayLink`, calls `ReplaceAutoRemoveTimer(0)` on one unblocked arrow at a time.
+- Auto-level waits for `UiContext.isActiveMainMenuScreen` with no popup (`PopupService.HasAnyPopupOrDialogOpen()`),
+  then calls `MainMenuService.StartGame()` (what the Play button does). Clears are counted on the rising edge of `GameContext.isLevelComplete`.
 - It only calls il2cpp exports resolved with `dlsym`; **no code patching / inline hooks**, so no JIT is required.

@@ -63,6 +63,18 @@ static const MethodInfo *m_Ent_isTryToMove;
 static const MethodInfo *m_Ent_hasAutoRemoveTimer;
 static const MethodInfo *m_Ent_ReplaceAutoRemoveTimer;
 
+static const MethodInfo *m_Contexts_get_ui;
+static const MethodInfo *m_Contexts_get_service;
+static const MethodInfo *m_Game_hasStartLevel;
+static const MethodInfo *m_Game_hasTryStartLevel;
+static const MethodInfo *m_Ui_isActiveMainMenuScreen;
+static const MethodInfo *m_Svc_get_popupService;     // -> PopupServiceComponent (.Value @0x10)
+static const MethodInfo *m_Svc_get_mainMenuService;  // -> MainMenuServiceComponent (.Value @0x10)
+static Il2CppClass *gPopupServiceClass;
+static Il2CppClass *gMainMenuServiceClass;
+static const MethodInfo *m_Popup_HasAnyPopupOrDialogOpen;
+static const MethodInfo *m_MainMenu_StartGame;
+
 static BOOL gResolved = NO;
 
 #define LOAD_API(var, name) do { \
@@ -127,8 +139,14 @@ BOOL ACIl2CppResolve(void) {
     Il2CppClass *contexts = p_class_from_name(image, "", "Contexts");
     Il2CppClass *gameContext = p_class_from_name(image, "", "GameContext");
     Il2CppClass *gameEntity = p_class_from_name(image, "", "GameEntity");
-    if (!contexts || !gameContext || !gameEntity) {
-        ACLog(@"class not found: Contexts=%p GameContext=%p GameEntity=%p", contexts, gameContext, gameEntity);
+    Il2CppClass *uiContext = p_class_from_name(image, "", "UiContext");
+    Il2CppClass *serviceContext = p_class_from_name(image, "", "ServiceContext");
+    gPopupServiceClass = p_class_from_name(image, "", "PopupService");
+    gMainMenuServiceClass = p_class_from_name(image, "", "MainMenuService");
+    if (!contexts || !gameContext || !gameEntity || !uiContext || !serviceContext
+        || !gPopupServiceClass || !gMainMenuServiceClass) {
+        ACLog(@"class not found: Contexts=%p GameContext=%p GameEntity=%p UiContext=%p ServiceContext=%p PopupService=%p MainMenuService=%p",
+              contexts, gameContext, gameEntity, uiContext, serviceContext, gPopupServiceClass, gMainMenuServiceClass);
         return NO;
     }
 
@@ -151,12 +169,25 @@ BOOL ACIl2CppResolve(void) {
     m_Ent_hasAutoRemoveTimer = ACFindMethod(gameEntity, "get_hasAutoRemoveTimer", 0);
     m_Ent_ReplaceAutoRemoveTimer = ACFindMethod(gameEntity, "ReplaceAutoRemoveTimer", 1);
 
+    m_Contexts_get_ui = ACFindMethod(contexts, "get_ui", 0);
+    m_Contexts_get_service = ACFindMethod(contexts, "get_service", 0);
+    m_Game_hasStartLevel = ACFindMethod(gameContext, "get_hasStartLevel", 0);
+    m_Game_hasTryStartLevel = ACFindMethod(gameContext, "get_hasTryStartLevel", 0);
+    m_Ui_isActiveMainMenuScreen = ACFindMethod(uiContext, "get_isActiveMainMenuScreen", 0);
+    m_Svc_get_popupService = ACFindMethod(serviceContext, "get_popupService", 0);
+    m_Svc_get_mainMenuService = ACFindMethod(serviceContext, "get_mainMenuService", 0);
+    m_Popup_HasAnyPopupOrDialogOpen = ACFindMethod(gPopupServiceClass, "HasAnyPopupOrDialogOpen", 0);
+    m_MainMenu_StartGame = ACFindMethod(gMainMenuServiceClass, "StartGame", 0);
+
     const MethodInfo *all[] = {
         m_Contexts_get_game, m_Ctx_GetEntities,
         m_Game_isLevelPlaying, m_Game_isLevelComplete, m_Game_isLevelFailed,
         m_Game_isCleanupLevel, m_Game_hasArrowGrid,
         m_Ent_hasArrowId, m_Ent_isMoving, m_Ent_isDestroyed, m_Ent_hasBlocked,
         m_Ent_isTryToMove, m_Ent_hasAutoRemoveTimer, m_Ent_ReplaceAutoRemoveTimer,
+        m_Contexts_get_ui, m_Contexts_get_service, m_Game_hasStartLevel, m_Game_hasTryStartLevel,
+        m_Ui_isActiveMainMenuScreen, m_Svc_get_popupService, m_Svc_get_mainMenuService,
+        m_Popup_HasAnyPopupOrDialogOpen, m_MainMenu_StartGame,
     };
     for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++) {
         if (!all[i] || !all[i]->methodPointer) {
@@ -182,7 +213,7 @@ static inline void *CallObj(const MethodInfo *mi, void *self) {
     return ((ObjGetter)mi->methodPointer)(self, mi);
 }
 
-static void *ACGetGameContext(void) {
+static void *ACGetContexts(void) {
     static BOOL classInited = NO;
     if (!classInited) {
         // static フィールド領域の確保を保証する。Contexts には明示的な static 初期化子が無いので
@@ -192,19 +223,74 @@ static void *ACGetGameContext(void) {
     }
     void *contexts = NULL;
     p_field_static_get_value(gContextsSharedField, &contexts);
-    if (!contexts) return NULL; // ゲームがまだ Contexts を作っていない
-    return CallObj(m_Contexts_get_game, contexts);
+    return contexts; // NULL = ゲームがまだ Contexts を作っていない
+}
+
+static void *ACGetGameContext(void) {
+    void *contexts = ACGetContexts();
+    return contexts ? CallObj(m_Contexts_get_game, contexts) : NULL;
+}
+
+/// ServiceContext の XxxServiceComponent から .Value を取り出し、期待したクラスか確認する。
+static void *ACGetService(void *contexts, const MethodInfo *getter, Il2CppClass *expected) {
+    void *service = CallObj(m_Contexts_get_service, contexts);
+    if (!service) return NULL;
+    void *component = CallObj(getter, service);
+    if (!component) return NULL;
+    void *value = *(void **)((uint8_t *)component + 0x10);
+    if (!value) return NULL;
+    // il2cpp オブジェクトの先頭ワードは Il2CppClass*。インターフェース経由の実体が
+    // 想定したクラスでなければ呼ばない (アップデートで実装が差し替わった時の保険)。
+    if (*(Il2CppClass **)value != expected) return NULL;
+    return value;
+}
+
+static BOOL ACEnsureResolved(void) {
+    if (gResolved) return YES;
+    // 解決の試行は 1 秒に 1 回まで。
+    static CFTimeInterval lastTry = 0;
+    CFTimeInterval now = CFAbsoluteTimeGetCurrent();
+    if (now - lastTry < 1.0) return NO;
+    lastTry = now;
+    return ACIl2CppResolve();
+}
+
+ACGameState ACIl2CppQueryState(void) {
+    ACGameState st = {0};
+    if (!ACEnsureResolved()) return st;
+    void *contexts = ACGetContexts();
+    if (!contexts) return st;
+    void *game = CallObj(m_Contexts_get_game, contexts);
+    void *ui = CallObj(m_Contexts_get_ui, contexts);
+    if (!game || !ui) return st;
+
+    st.ready = YES;
+    st.levelPlaying = CallBool(m_Game_isLevelPlaying, game);
+    st.levelComplete = CallBool(m_Game_isLevelComplete, game);
+    st.levelFailed = CallBool(m_Game_isLevelFailed, game);
+    st.startPending = CallBool(m_Game_hasStartLevel, game) || CallBool(m_Game_hasTryStartLevel, game);
+    st.mainMenuActive = CallBool(m_Ui_isActiveMainMenuScreen, ui);
+    void *popup = ACGetService(contexts, m_Svc_get_popupService, gPopupServiceClass);
+    st.popupOpen = popup ? CallBool(m_Popup_HasAnyPopupOrDialogOpen, popup) : YES; // 不明なら開いている扱い
+    return st;
+}
+
+BOOL ACIl2CppStartGame(void) {
+    if (!gResolved) return NO;
+    void *contexts = ACGetContexts();
+    if (!contexts) return NO;
+    void *mainMenu = ACGetService(contexts, m_Svc_get_mainMenuService, gMainMenuServiceClass);
+    if (!mainMenu) {
+        ACLog(@"StartGame: MainMenuService not available");
+        return NO;
+    }
+    ((void (*)(void *, const MethodInfo *))m_MainMenu_StartGame->methodPointer)(mainMenu, m_MainMenu_StartGame);
+    ACLog(@"StartGame called");
+    return YES;
 }
 
 BOOL ACIl2CppStep(void) {
-    if (!gResolved) {
-        // 解決の試行は 1 秒に 1 回まで。
-        static CFTimeInterval lastTry = 0;
-        CFTimeInterval now = CFAbsoluteTimeGetCurrent();
-        if (now - lastTry < 1.0) return NO;
-        lastTry = now;
-        if (!ACIl2CppResolve()) return NO;
-    }
+    if (!ACEnsureResolved()) return NO;
 
     void *game = ACGetGameContext();
     if (!game) return NO;

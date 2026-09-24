@@ -31,3 +31,17 @@
 
 ## 2026-09-24 起動時デフォルトを OFF に
 - 要望により ON/OFF 状態は保存せず、起動直後は常に OFF。速度設定のみ保存を継続。
+
+## 2026-09-24 ボタン右下固定 + レベル自動進行
+- 報告: 縦横を切り替えるとボタンが消えた (固定座標のまま画面外へ行ったと思われる)。
+  → ドラッグ移動を廃止し、UIStackView (LEVEL / AUTO) を window.bounds の変化を検知するたびに右下へ再配置。
+- レベル完了後の流れ (ISIL から):
+  `ArrowsCompleteSystem` → `isLevelComplete` → `LevelCompleteView` (広告の場合あり) → `GoToMainMenu`
+  (`isCleanupLevel` + `OpenMainMenu`)。ホームの PlayButton は `HomeScreenView.StartLevel` →
+  `IMainMenuService.StartGame()` → `ReplaceLevelEntry(1)` + `SetStartLevel(savegame の現在レベル)` + `CloseMainMenu`。
+- 自動進行: メニュー表示中 (`UiContext.isActiveMainMenuScreen`) かつ非プレイ中・StartLevel/TryStartLevel 無し・
+  ポップアップ無し (`PopupService.HasAnyPopupOrDialogOpen`) が 1.5 秒続いたら `MainMenuService.StartGame()`。
+  連打防止に 4 秒のクールダウン。サービス実体は `XxxServiceComponent.Value (@0x10)` を読み、
+  オブジェクト先頭の klass が期待クラスと一致する時だけ呼ぶ。
+- モード: OFF / ∞ / 10 / 20 / 50。クリア回数は `isLevelComplete` の立ち上がりで数える。
+- 実機未検証。
