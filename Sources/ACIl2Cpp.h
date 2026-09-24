@@ -28,8 +28,17 @@ typedef struct {
 /// 現在のゲーム状態を読む (読むだけで何も変更しない)。
 ACGameState ACIl2CppQueryState(void);
 
-/// メインメニューのプレイボタンと同じ処理 (MainMenuService.StartGame) で次のレベルを開始する。
-BOOL ACIl2CppStartGame(void);
+typedef NS_ENUM(NSInteger, ACStartResult) {
+    ACStartFailed = 0,       // 開始できなかった (未解決など)
+    ACStartedMain,           // ホームのプレイ (通常レベル)
+    ACStartedDaily,          // チャレンジ画面のプレイ (選択中の日)
+    ACStartDailyUnavailable, // チャレンジ画面だが選択中の日が遊べない (クリア済み・未来など)
+};
+
+/// メインメニューで「今表示されている画面のプレイボタン」と同じ処理を行う。
+/// チャレンジ画面 (DailyChallengeScreenView) が出ていればその StartDailyLevel()、
+/// それ以外はホームと同じ MainMenuService.StartGame()。
+ACStartResult ACIl2CppStartNext(void);
 
 /// 開いている実績解除ポップアップ (UiEntity.isOpen && gameEntityRef → GameEntity.isAward) の数を返す。
 /// close が YES なら「続ける」ボタンと同じく isOpen = false にして閉じる。

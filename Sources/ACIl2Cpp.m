@@ -35,6 +35,12 @@ static FieldInfo *(*p_class_get_field_from_name)(Il2CppClass *, const char *);
 static void (*p_field_static_get_value)(FieldInfo *, void *);
 static void (*p_runtime_class_init)(Il2CppClass *);
 static const Il2CppImage *(*p_get_corlib)(void);
+static const MethodInfo *(*p_class_get_methods)(Il2CppClass *, void **);
+static const char *(*p_method_get_name)(const MethodInfo *);
+static uint32_t (*p_method_get_param_count)(const MethodInfo *);
+static BOOL (*p_method_is_generic)(const MethodInfo *);
+static const void *(*p_class_get_type)(Il2CppClass *);
+static void *(*p_type_get_object)(const void *);
 
 // ---------------------------------------------------------------------------
 // ゲーム側のメソッド (Cpp2IL ダンプで確認したシグネチャ)
@@ -87,6 +93,15 @@ static const MethodInfo *m_RateUs_TryGetActivePromptContext; // static bool (out
 static const MethodInfo *m_RateUs_HandleDismiss;              // static void (Contexts)
 static const MethodInfo *m_Popup_CloseCurrentPopup;
 
+// チャレンジ画面
+static Il2CppClass *gDailyScreenClass;               // DailyChallengeScreenView
+static void *gDailyScreenTypeObject;                 // System.Type (FindFirstObjectByType 用)
+static const MethodInfo *m_Daily_StartDailyLevel;     // private void StartDailyLevel()
+static const MethodInfo *m_UnityObject_FindFirstByType; // UnityEngine.Object.FindFirstObjectByType(Type)
+static const size_t kDailyPlayButtonOffset = 0x50;    // DailyChallengeScreenView.PlayButton
+static const size_t kDailyYearOffset = 0xA4;          // _year
+static const size_t kDailyDayOffset = 0xA8;           // _dayOfYear
+
 static BOOL gResolved = NO;
 
 #define LOAD_API(var, name) do { \
@@ -108,6 +123,12 @@ static BOOL ACLoadApi(void) {
     LOAD_API(p_field_static_get_value, "il2cpp_field_static_get_value");
     LOAD_API(p_runtime_class_init, "il2cpp_runtime_class_init");
     LOAD_API(p_get_corlib, "il2cpp_get_corlib");
+    LOAD_API(p_class_get_methods, "il2cpp_class_get_methods");
+    LOAD_API(p_method_get_name, "il2cpp_method_get_name");
+    LOAD_API(p_method_get_param_count, "il2cpp_method_get_param_count");
+    LOAD_API(p_method_is_generic, "il2cpp_method_is_generic");
+    LOAD_API(p_class_get_type, "il2cpp_class_get_type");
+    LOAD_API(p_type_get_object, "il2cpp_type_get_object");
     loaded = YES;
     return YES;
 }
@@ -229,6 +250,29 @@ BOOL ACIl2CppResolve(void) {
         return NO;
     }
 
+    // チャレンジ画面用 (見つからなくても通常レベルの自動進行は動くので致命扱いしない)。
+    gDailyScreenClass = p_class_from_name(image, "", "DailyChallengeScreenView");
+    const Il2CppImage *core = ACFindImage("UnityEngine.CoreModule.dll");
+    Il2CppClass *unityObject = core ? p_class_from_name(core, "UnityEngine", "Object") : NULL;
+    if (gDailyScreenClass && unityObject) {
+        m_Daily_StartDailyLevel = ACFindMethod(gDailyScreenClass, "StartDailyLevel", 0);
+        // FindFirstObjectByType は引数 1 個にジェネリック版 <T>(FindObjectsInactive) も混ざるので、
+        // 非ジェネリックのものを明示的に選ぶ。
+        void *iter = NULL;
+        const MethodInfo *mi;
+        while ((mi = p_class_get_methods(unityObject, &iter))) {
+            const char *name = p_method_get_name(mi);
+            if (name && strcmp(name, "FindFirstObjectByType") == 0
+                && p_method_get_param_count(mi) == 1 && !p_method_is_generic(mi)) {
+                m_UnityObject_FindFirstByType = mi;
+                break;
+            }
+        }
+        gDailyScreenTypeObject = p_type_get_object(p_class_get_type(gDailyScreenClass));
+    }
+    ACLog(@"daily support: screen=%p start=%p find=%p type=%p", gDailyScreenClass, m_Daily_StartDailyLevel,
+          m_UnityObject_FindFirstByType, gDailyScreenTypeObject);
+
     gResolved = YES;
     ACLog(@"il2cpp resolved OK");
     return YES;
@@ -304,8 +348,45 @@ ACGameState ACIl2CppQueryState(void) {
     return st;
 }
 
-BOOL ACIl2CppStartGame(void) {
-    if (!gResolved) return NO;
+/// 表示中の (アクティブな) チャレンジ画面ビューを探す。無ければ NULL。
+static void *ACFindDailyScreen(void) {
+    if (!m_UnityObject_FindFirstByType || !m_Daily_StartDailyLevel || !gDailyScreenTypeObject) return NULL;
+    void *obj = ((void *(*)(void *, const MethodInfo *))m_UnityObject_FindFirstByType->methodPointer)(
+        gDailyScreenTypeObject, m_UnityObject_FindFirstByType);
+    if (!obj || *(Il2CppClass **)obj != gDailyScreenClass) return NULL;
+    return obj;
+}
+
+static BOOL ACIsButtonInteractable(void *button) {
+    if (!button) return NO;
+    // UnityButton.IsInteractable は override されうるので実体クラスから引く。
+    const MethodInfo *mi = ACFindMethod(*(Il2CppClass **)button, "get_IsInteractable", 0);
+    return mi ? CallBool(mi, button) : NO;
+}
+
+static BOOL ACStartMainGame(void);
+
+ACStartResult ACIl2CppStartNext(void) {
+    if (!gResolved) return ACStartFailed;
+
+    void *daily = ACFindDailyScreen();
+    if (daily) {
+        int year = *(int *)((uint8_t *)daily + kDailyYearOffset);
+        int day = *(int *)((uint8_t *)daily + kDailyDayOffset);
+        void *playButton = *(void **)((uint8_t *)daily + kDailyPlayButtonOffset);
+        if (!ACIsButtonInteractable(playButton)) {
+            ACLog(@"daily: selected day %d/%d not playable", year, day);
+            return ACStartDailyUnavailable;
+        }
+        // チャレンジ画面のプレイボタンと同じ処理。
+        ((void (*)(void *, const MethodInfo *))m_Daily_StartDailyLevel->methodPointer)(daily, m_Daily_StartDailyLevel);
+        ACLog(@"StartDailyLevel called (%d/%d)", year, day);
+        return ACStartedDaily;
+    }
+    return ACStartMainGame() ? ACStartedMain : ACStartFailed;
+}
+
+static BOOL ACStartMainGame(void) {
     void *contexts = ACGetContexts();
     if (!contexts) return NO;
     void *mainMenu = ACGetService(contexts, m_Svc_get_mainMenuService, gMainMenuServiceClass);

@@ -68,3 +68,16 @@
   prev の初期値とのズレで数えていた。→ 「プレイ中 (isLevelPlaying && !isLevelComplete) を観測した後の立ち上がり」だけ数えるよう変更。
 - 実機確認: 実績・評価とも 1.5 秒後に閉じて自動進行が再開。LEVEL ON 直後の誤カウントも解消。10 回完走後に自動で OFF。
 - 途中でインタースティシャル広告が出ると止まる (閉じれば再開)。広告は姉妹プロジェクト LCAB (iOS_LC_AdBlocker) で塞ぐ方針のため、本プロジェクトの対象外。
+
+## 2026-09-24 チャレンジ (デイリー) 画面の自動進行
+- 報告: チャレンジ画面で LEVEL を回すと tweak のカウントは増えるが、ゲーム側のチャレンジのクリア数が増えない。
+- 原因: `MainMenuService.StartGame()` はホームのプレイボタン相当で、常に通常レベル (savegame の現在レベル) を開始していた。
+  つまりチャレンジ画面にいても通常レベルを進めていた。
+- チャレンジのプレイボタン = `DailyChallengeScreenView.StartDailyLevel()`: ビューの `_year (@0xA4)` / `_dayOfYear (@0xA8)` で
+  `ReplaceLevelEntry` + tracking + `DailyChallengeUtils.StartDailyChallenge(contexts, year, day)`。
+- 実装: `UnityEngine.Object.FindFirstObjectByType(Type)` でアクティブな DailyChallengeScreenView を探し、
+  あれば `PlayButton (@0x50).IsInteractable` を確認して `StartDailyLevel()` を直接呼ぶ。無ければ従来通り StartGame。
+  - `FindFirstObjectByType` は引数 1 個の候補にジェネリック `<T>(FindObjectsInactive)` もあるため、
+    `il2cpp_class_get_methods` で「非ジェネリック・引数 1」を選ぶ。System.Type は `il2cpp_type_get_object(il2cpp_class_get_type(klass))`。
+  - 選択中の日が遊べない (ボタン非活性) 場合は LEVEL を OFF にして停止 (勝手に通常レベルへ切り替えない)。
+- 実機未検証 (クリア後に次の未クリア日が自動選択される前提。スクショ上は完了済み 9 日の次の 10 日が選択されていた)。

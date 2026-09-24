@@ -152,7 +152,12 @@ static const CFTimeInterval kMenuPopupGiveUpSeconds = 6.0;
 
     self.lastStartCall = now;
     self.menuStableSince = 0;
-    ACIl2CppStartGame();
+    if (ACIl2CppStartNext() == ACStartDailyUnavailable) {
+        // チャレンジ画面で遊べる日が選ばれていない (その月を全部クリアした等) → 勝手に別モードへ行かず停止。
+        ACLog(@"level mode stopped: no playable daily challenge selected");
+        self.levelPresetIndex = 0;
+        [self refreshButtons];
+    }
 }
 
 /// レベル間で進行を止めるポップアップを片付ける。
