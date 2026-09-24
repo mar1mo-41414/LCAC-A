@@ -35,6 +35,8 @@ static const CFTimeInterval kMenuSettleSeconds = 1.5;
 static const CFTimeInterval kStartCooldownSeconds = 4.0;
 // 実績ポップアップが出てから閉じるまでの待ち (ボタン表示演出が終わるまで Close が効かない想定)。
 static const CFTimeInterval kAwardCloseDelay = 1.5;
+// メインメニュー上のポップアップをこの秒数見届けてから閉じにかかる (開く演出待ち)。
+static const CFTimeInterval kMenuPopupCloseDelay = 1.5;
 // メニュー上でポップアップがこれ以上居座ったら PopupService.CloseAll() する。
 static const CFTimeInterval kMenuPopupGiveUpSeconds = 6.0;
 
@@ -52,6 +54,7 @@ static const CFTimeInterval kMenuPopupGiveUpSeconds = 6.0;
 @property (nonatomic) NSInteger levelTarget;      // -1 = 無限
 @property (nonatomic) NSInteger levelCleared;     // このモードでクリアした回数
 @property (nonatomic) BOOL prevLevelComplete;
+@property (nonatomic) BOOL sawLevelPlaying; // このレベルを実際にプレイ中の状態で観測したか
 @property (nonatomic) CFTimeInterval menuStableSince;
 @property (nonatomic) CFTimeInterval lastStartCall;
 @property (nonatomic) CFTimeInterval awardSeenSince;
@@ -111,8 +114,11 @@ static const CFTimeInterval kMenuPopupGiveUpSeconds = 6.0;
 }
 
 - (void)driveLevelMode:(ACGameState)st now:(CFTimeInterval)now {
-    // クリア回数のカウント (isLevelComplete の立ち上がり)。
-    if (st.levelComplete && !self.prevLevelComplete) {
+    // クリア回数のカウント。isLevelComplete はメニューに戻っても立ったまま残るため、
+    // 「プレイ中を見届けた後の立ち上がり」だけを数える (モード ON 直後の誤カウント防止)。
+    if (st.levelPlaying && !st.levelComplete && !st.levelFailed) self.sawLevelPlaying = YES;
+    if (st.levelComplete && !self.prevLevelComplete && self.sawLevelPlaying) {
+        self.sawLevelPlaying = NO;
         self.levelCleared++;
         ACLog(@"level cleared (%ld / %ld)", (long)self.levelCleared, (long)self.levelTarget);
         [self refreshButtons];
@@ -165,9 +171,15 @@ static const CFTimeInterval kMenuPopupGiveUpSeconds = 6.0;
         }
     }
 
-    // メインメニュー上で PopupService のポップアップが居座っている場合の最終手段。
+    // メインメニュー上で PopupService のポップアップが居座っている場合。
     if (st.mainMenuActive && st.popupOpen) {
         if (self.menuPopupSince == 0) self.menuPopupSince = now;
+        // 評価のお願い → 「閉じる」相当で閉じる。
+        if (now - self.menuPopupSince >= kMenuPopupCloseDelay && ACIl2CppDismissRateUs()) {
+            self.menuPopupSince = 0;
+            return;
+        }
+        // それ以外 → 最終手段で全部閉じる。
         if (now - self.menuPopupSince >= kMenuPopupGiveUpSeconds && now - self.lastCloseAll >= kMenuPopupGiveUpSeconds) {
             self.lastCloseAll = now;
             ACIl2CppCloseAllPopups();
@@ -300,6 +312,7 @@ static const CFTimeInterval kMenuPopupGiveUpSeconds = 6.0;
     self.menuStableSince = 0;
     // 既にクリア画面にいる状態で ON にしても、そのクリアは数えない。
     self.prevLevelComplete = ACIl2CppQueryState().levelComplete;
+    self.sawLevelPlaying = NO;
     if ([self levelModeActive]) self.enabled = YES; // レベル進行中は矢印の自動クリアも必須
     [self refreshButtons];
     ACLog(@"level mode -> %ld", (long)self.levelTarget);

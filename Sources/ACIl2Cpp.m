@@ -82,6 +82,10 @@ static const MethodInfo *m_UiEnt_hasGameEntityRef;
 static const MethodInfo *m_UiEnt_gameEntityRef;       // -> GameEntityRefComponent (.Value @0x10)
 static const MethodInfo *m_Ref_get_Entity;            // GameEntityRef.get_Entity()
 static const MethodInfo *m_Ent_isAward;
+static Il2CppClass *gRateUsCoordinatorClass;
+static const MethodInfo *m_RateUs_TryGetActivePromptContext; // static bool (out RateUsPromptContext)
+static const MethodInfo *m_RateUs_HandleDismiss;              // static void (Contexts)
+static const MethodInfo *m_Popup_CloseCurrentPopup;
 
 static BOOL gResolved = NO;
 
@@ -153,8 +157,9 @@ BOOL ACIl2CppResolve(void) {
     gMainMenuServiceClass = p_class_from_name(image, "", "MainMenuService");
     Il2CppClass *uiEntity = p_class_from_name(image, "", "UiEntity");
     Il2CppClass *gameEntityRef = p_class_from_name(image, "", "GameEntityRef");
+    gRateUsCoordinatorClass = p_class_from_name(image, "", "RateUsCoordinator");
     if (!contexts || !gameContext || !gameEntity || !uiContext || !serviceContext
-        || !gPopupServiceClass || !gMainMenuServiceClass || !uiEntity || !gameEntityRef) {
+        || !gPopupServiceClass || !gMainMenuServiceClass || !uiEntity || !gameEntityRef || !gRateUsCoordinatorClass) {
         ACLog(@"class not found: Contexts=%p GameContext=%p GameEntity=%p UiContext=%p ServiceContext=%p PopupService=%p MainMenuService=%p",
               contexts, gameContext, gameEntity, uiContext, serviceContext, gPopupServiceClass, gMainMenuServiceClass);
         return NO;
@@ -196,6 +201,9 @@ BOOL ACIl2CppResolve(void) {
     m_UiEnt_gameEntityRef = ACFindMethod(uiEntity, "get_gameEntityRef", 0);
     m_Ref_get_Entity = ACFindMethod(gameEntityRef, "get_Entity", 0);
     m_Ent_isAward = ACFindMethod(gameEntity, "get_isAward", 0);
+    m_RateUs_TryGetActivePromptContext = ACFindMethod(gRateUsCoordinatorClass, "TryGetActivePromptContext", 1);
+    m_RateUs_HandleDismiss = ACFindMethod(gRateUsCoordinatorClass, "HandleDismiss", 1);
+    m_Popup_CloseCurrentPopup = ACFindMethod(gPopupServiceClass, "CloseCurrentPopup", 0);
 
     const MethodInfo *all[] = {
         m_Contexts_get_game, m_Ctx_GetEntities,
@@ -208,6 +216,7 @@ BOOL ACIl2CppResolve(void) {
         m_Popup_HasAnyPopupOrDialogOpen, m_MainMenu_StartGame, m_Popup_CloseAll,
         m_UiCtx_GetEntities, m_UiEnt_isOpen, m_UiEnt_setIsOpen, m_UiEnt_hasGameEntityRef,
         m_UiEnt_gameEntityRef, m_Ref_get_Entity, m_Ent_isAward,
+        m_RateUs_TryGetActivePromptContext, m_RateUs_HandleDismiss, m_Popup_CloseCurrentPopup,
     };
     for (size_t i = 0; i < sizeof(all) / sizeof(all[0]); i++) {
         if (!all[i] || !all[i]->methodPointer) {
@@ -337,6 +346,29 @@ NSInteger ACIl2CppAwardPopups(BOOL close) {
     }
     if (found && close) ACLog(@"closed %ld award popup(s)", (long)found);
     return found;
+}
+
+BOOL ACIl2CppDismissRateUs(void) {
+    if (!gResolved) return NO;
+    void *contexts = ACGetContexts();
+    if (!contexts) return NO;
+
+    // RateUsCoordinator._activePromptContext が立っている = 評価プロンプト表示中。
+    static BOOL classInited = NO;
+    if (!classInited) { p_runtime_class_init(gRateUsCoordinatorClass); classInited = YES; }
+    uint8_t promptContext[64] = {0}; // RateUsPromptContext は int 2 個の struct。余裕を持たせる
+    BOOL active = ((BOOL (*)(void *, const MethodInfo *))m_RateUs_TryGetActivePromptContext->methodPointer)(
+        promptContext, m_RateUs_TryGetActivePromptContext);
+    if (!active) return NO;
+
+    void *popup = ACGetService(contexts, m_Svc_get_popupService, gPopupServiceClass);
+    if (!popup) return NO;
+
+    // AdvancedRateUsUiView.Close() と同じ: ポップアップの UiEntity.isOpen = false → HandleDismiss(contexts)。
+    ((void (*)(void *, const MethodInfo *))m_Popup_CloseCurrentPopup->methodPointer)(popup, m_Popup_CloseCurrentPopup);
+    ((void (*)(void *, const MethodInfo *))m_RateUs_HandleDismiss->methodPointer)(contexts, m_RateUs_HandleDismiss);
+    ACLog(@"rate-us prompt dismissed");
+    return YES;
 }
 
 BOOL ACIl2CppCloseAllPopups(void) {

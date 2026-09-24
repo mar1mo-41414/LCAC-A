@@ -56,3 +56,14 @@
   の UiEntity を探し、出現から 1.5 秒後に `set_isOpen(false)`。
 - 保険: メインメニュー上で PopupService のポップアップが 6 秒以上居座ったら `PopupService.CloseAll()`。
 - 実機未検証。
+
+## 2026-09-24 評価のお願いポップアップ + クリア数の誤カウント
+- 報告 (実績クローズ版の前のビルド): メインメニュー上の「アローズを楽しんでいますか？」(5つ星 / 1-4つ星 / 閉じる) で停止。
+- `RateUsCoordinator.OpenPrompt` → `PopupService.OpenPopup` で開く `AdvancedRateUsUiView`。
+  「閉じる」= `Close()`: 自分の UiEntity.isOpen = false → `RateUsCoordinator.HandleDismiss(contexts)`。
+- 実装: メニュー上でポップアップが 1.5 秒続き、`RateUsCoordinator.TryGetActivePromptContext` が true なら
+  `PopupService.CloseCurrentPopup()` + `HandleDismiss(contexts)`。星ボタンは押さない (レビュー画面に飛ぶため)。
+  評価以外は従来通り 6 秒で `CloseAll()`。
+- ログで LEVEL ON 直後に `level cleared (1 / -1)` が出ていた。`isLevelComplete` はメニューに戻っても立ったままらしく、
+  prev の初期値とのズレで数えていた。→ 「プレイ中 (isLevelPlaying && !isLevelComplete) を観測した後の立ち上がり」だけ数えるよう変更。
+- 実機未検証。

@@ -35,6 +35,10 @@ BOOL ACIl2CppStartGame(void);
 /// close が YES なら「続ける」ボタンと同じく isOpen = false にして閉じる。
 NSInteger ACIl2CppAwardPopups(BOOL close);
 
+/// 評価のお願い (AdvancedRateUsUiView) が出ていれば「閉じる」と同じ処理で閉じる。閉じたら YES。
+/// 5つ星/1-4つ星は押さない (App Store のレビュー画面やフィードバックに飛ぶため)。
+BOOL ACIl2CppDismissRateUs(void);
+
 /// PopupService.CloseAll() (メニュー上で居座るポップアップの最終手段)。
 BOOL ACIl2CppCloseAllPopups(void);
 

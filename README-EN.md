@@ -29,7 +29,7 @@ It only pulls arrows whose path is not blocked by another arrow, one at a time, 
 
 - Turning LEVEL on also turns AUTO on.
 - After a clear, once the main menu has been idle for 1.5 s (no popups), the next level is started the same way the Play button does.
-  Achievement popups ("Continue") are dismissed automatically; other popups on the menu are closed after 6 s.
+  Achievement popups ("Continue") and the rate-us prompt ("Close"; never taps the stars) are dismissed automatically; other popups on the menu are closed after 6 s.
 - Shows `LEVEL 3/10` or `LEVEL ∞ (3)`. When the count is reached both AUTO and LEVEL turn OFF.
 
 Only the speed is stored in NSUserDefaults (always OFF on launch). Diagnostic log: `Documents/lcac-debug.log`.
