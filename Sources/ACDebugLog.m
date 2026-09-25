@@ -3,7 +3,7 @@
 static NSString *ACLogFilePath(void) {
     NSArray<NSString *> *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
     NSString *docs = paths.firstObject ?: NSTemporaryDirectory();
-    return [docs stringByAppendingPathComponent:@"lcac-debug.log"];
+    return [docs stringByAppendingPathComponent:@"lcac-a-debug.log"];
 }
 
 void ACLog(NSString *format, ...) {
@@ -12,7 +12,7 @@ void ACLog(NSString *format, ...) {
     NSString *message = [[NSString alloc] initWithFormat:format arguments:args];
     va_end(args);
 
-    NSLog(@"[LCAC] %@", message);
+    NSLog(@"[LCAC-A] %@", message);
 
     @try {
         NSString *path = ACLogFilePath();

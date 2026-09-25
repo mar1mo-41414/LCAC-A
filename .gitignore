@@ -5,3 +5,4 @@ packages/
 .DS_Store
 start-note.md
 Data/*.ipa
+Data/

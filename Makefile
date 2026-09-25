@@ -4,12 +4,12 @@ THEOS_PACKAGE_SCHEME = rootless
 
 include $(THEOS)/makefiles/common.mk
 
-LIBRARY_NAME = LCAutoClearArrows
+LIBRARY_NAME = LCAC-A
 
-LCAutoClearArrows_FILES = $(wildcard Sources/*.m)
-LCAutoClearArrows_CFLAGS = -fobjc-arc -Wall -ISources
-LCAutoClearArrows_FRAMEWORKS = UIKit Foundation QuartzCore
-LCAutoClearArrows_LIBRARY_EXTENSION = .dylib
-LCAutoClearArrows_INSTALL_PATH = /usr/lib
+LCAC-A_FILES = $(wildcard Sources/*.m)
+LCAC-A_CFLAGS = -fobjc-arc -Wall -ISources
+LCAC-A_FRAMEWORKS = UIKit Foundation QuartzCore
+LCAC-A_LIBRARY_EXTENSION = .dylib
+LCAC-A_INSTALL_PATH = /usr/lib
 
 include $(THEOS_MAKE_PATH)/library.mk

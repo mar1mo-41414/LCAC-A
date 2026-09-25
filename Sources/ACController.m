@@ -10,7 +10,7 @@
 // こちらの CADisplayLink も同じスレッドで「フレームとフレームの間」に走る。
 // よって ECS (Entitas) のエンティティを触ってもゲーム側と競合しない。
 
-static NSString *const kSpeedKey = @"LCAC.speedIndex";
+static NSString *const kSpeedKey = @"LCAC-A.speedIndex";
 
 typedef struct {
     const char *label;
@@ -352,7 +352,7 @@ static const CFTimeInterval kDailyRetrySeconds = 0.5;
 
 __attribute__((constructor))
 static void ACEntryPoint(void) {
-    ACLog(@"LC_AutoClearArrows loaded");
+    ACLog(@"LCAC-A loaded");
     // UIApplication の準備を待つため次のランループで開始。il2cpp 側の準備は
     // ACIl2CppStep 内で毎回確認し、未準備なら何もせず戻る。
     dispatch_async(dispatch_get_main_queue(), ^{

@@ -1,47 +1,57 @@
-# LC_AutoClearArrows
+# LCAC-A — LiveContainer AutoClear Arrows
 
 [日本語 README →](README.md)
 
-A tweak (dylib) for LiveContainer that automatically solves the puzzle game **Arrows** (`com.ecffri.arrows`, v0.21.1).
+A tweak (dylib) for [LiveContainer](https://github.com/LiveContainer/LiveContainer) that automatically solves the puzzle game **Arrows** (`com.ecffri.arrows`).
 
-It only pulls arrows whose path is not blocked by another arrow, one at a time, so **no mistakes (lives lost) happen**.
+- **Auto-clear arrows** — only pulls arrows whose path is free, one at a time, so **no mistakes (lives lost) ever happen**.
+- **Auto-advance levels** — starts the next level after each clear. Choose ∞ / 10 / 20 / 50.
+  Advances regular levels on the Home screen, and daily challenges on the Challenge screen.
+- Achievement and rate-us popups that appear in between are dismissed automatically.
+
+## Download
+
+Get `LCAC-A.dylib` from [Releases](../../releases/latest).
 
 ## Usage
 
-1. Build with `gmake` (requires Theos) → `.theos/obj/debug/LCAutoClearArrows.dylib`
-2. Put `LCAutoClearArrows.dylib` into the Arrows tweak folder in LiveContainer and launch
-3. Two buttons appear at the bottom-right (above the game's # button), both OFF on launch.
-   They are re-anchored to the bottom-right when the orientation changes.
+1. Put `LCAC-A.dylib` into the Arrows tweak folder in LiveContainer and launch
+2. Two buttons, `LEVEL` and `AUTO`, appear at the bottom-right (both OFF on launch)
 
 ### AUTO button (auto-clear arrows)
 
 | Action | Effect |
 | --- | --- |
-| Tap | ON / OFF (turning OFF also stops auto-level) |
+| Tap | ON / OFF |
 | Long press | Cycle speed (`x1` → `x2` → `x4` → `MAX`) |
 
-### LEVEL button (auto-advance levels)
+### LEVEL button (auto-advance)
 
 | Action | Effect |
 | --- | --- |
-| Tap | Cycle `OFF` → `∞` (until stopped) → `10` → `20` → `50` → `OFF` |
+| Tap | `OFF` → `∞` (until stopped) → `10` → `20` → `50` → `OFF` |
 | Long press | Stop immediately |
 
-- Turning LEVEL on also turns AUTO on.
-- After a clear, once the main menu has been idle for 1.5 s (no popups), the Play button of the screen currently shown is pressed
-  (Home → next regular level, Challenge → the selected daily challenge day). If no playable day is selected on the Challenge screen, LEVEL turns OFF.
-  Achievement popups ("Continue") and the rate-us prompt ("Close"; never taps the stars) are dismissed automatically; other popups on the menu are closed after 6 s.
-- Shows `LEVEL 3/10` or `LEVEL ∞ (3)`. When the count is reached both AUTO and LEVEL turn OFF.
+- Turning LEVEL on also turns AUTO on; turning AUTO off also stops LEVEL.
+- Shows `LEVEL 3/10` / `LEVEL ∞ (3)`. When the count is reached, both turn OFF.
+- On the Challenge screen, it stops when no playable day is left (e.g. the whole month is cleared).
+- Only the speed is saved. ON/OFF is not saved; everything is OFF on launch.
 
-Only the speed is stored in NSUserDefaults (always OFF on launch). Diagnostic log: `Documents/lcac-debug.log`.
+## Notes
 
-## How it works
+- Ads are out of scope. An ad stops the loop until you close it
+  (use an ad blocker such as [LCAB](https://github.com/mar1mo-41414/LCAB)).
+- If something goes wrong, check `Documents/lcac-a-debug.log` in the app's container.
+- Tested with Arrows 0.21.1. It relies on the game's internal class/method names, so a game update that renames them may break it.
 
-- The game is Unity 6 (IL2CPP) + Entitas (ECS). The game's own `ArrowBlockSystem` marks every arrow
-  whose path is obstructed with a `Blocked` component (via `ArrowGrid.Collides()`).
-- The game ships a dormant auto-remove mechanism: `ArrowAutoRemoveSystem` (always registered)
-  removes any arrow carrying an `AutoRemoveTimer` once the timer expires and it is not blocked.
-- The tweak, from a main-thread `CADisplayLink`, calls `ReplaceAutoRemoveTimer(0)` on one unblocked arrow at a time.
-- Auto-level waits for `UiContext.isActiveMainMenuScreen` with no popup (`PopupService.HasAnyPopupOrDialogOpen()`),
-  then calls `MainMenuService.StartGame()` (what the Play button does). Clears are counted on the rising edge of `GameContext.isLevelComplete`.
-- It only calls il2cpp exports resolved with `dlsym`; **no code patching / inline hooks**, so no JIT is required.
+## Build
+
+Requires [Theos](https://theos.dev).
+
+```bash
+make FINALPACKAGE=1
+```
+
+Output: `.theos/obj/LCAC-A.dylib`.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it works and [HISTORY.md](HISTORY.md) (Japanese) for the development log.

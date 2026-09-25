@@ -5,7 +5,7 @@
 ### 解析
 - IPA: `com.ecffri.arrows` 0.21.1, Unity 6000.0.58f2, IL2CPP metadata v31.1, UnityFramework は復号済み (cryptid 0)。
 - Perfare/Il2CppDumper は v31 非対応のため **Cpp2IL 2022.1.0-pre-release.21 (OSX-ARM64)** を使用。
-  - Mac でそのまま実行すると SIGKILL (rc=137) → `codesign -f -s -` で ad-hoc 署名すると動く。
+  - macOS でそのまま実行すると SIGKILL (rc=137) → `codesign -f -s -` で ad-hoc 署名すると動く。
   - `--output-as diffable-cs` でクラス構造、`--output-as isil` でメソッドごとの逆アセンブル + 呼び出し名が出る。
 - 主要クラス (すべて Assembly-CSharp, グローバル名前空間):
   - `Contexts._sharedInstance` (static) → `get_game()` → `GameContext` (Entitas `Context<GameEntity>`)
@@ -85,3 +85,9 @@
   `_year/_dayOfYear` が 0 のまま。そこで「遊べない」と誤判定していた。
 - 修正: `_year == 0` は「選択待ち」として 0.5 秒おきに再試行。選択待ち/非活性が 8 秒続いた時だけ LEVEL を OFF。
 - 実機確認: 2025/162 → 163 → … → 167 と 1 日ずつ自動で進み、チャレンジ側のクリアとして記録されることを確認。
+
+## 2026-09-25 LCAC-A として GitHub 公開
+- 名称を **LCAC-A (LiveContainer AutoClear Arrows)** に。将来の別プロジェクト「LCAC」(LC AutoClicker) との被り対策で、
+  dylib 名 `LCAC-A.dylib`、ログ `lcac-a-debug.log` / `[LCAC-A]`、設定キー `LCAC-A.speedIndex` も合わせて変更。
+- 公開に合わせて README を利用者向けに簡潔化し、技術的な解説を docs/ARCHITECTURE.md に切り出し。
+- ゲームのスクリーンショット (Data/) は追跡対象から外した。
