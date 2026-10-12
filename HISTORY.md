@@ -107,4 +107,4 @@
   - 矢印まわり (`Blocked`, `AutoRemoveTimer`, `ArrowAutoRemoveSystem` の常時登録) は変化なし。
 - 修正: 旧 (GameContext) と新 (currentLevelEntity) の両方を候補として引き、解決できた方を使う。開始フラグも has*/is* の両対応。
   チャレンジ画面のフィールドはオフセットのハードコードをやめ、`il2cpp_class_get_field_from_name` + `il2cpp_field_get_offset` で名前から取得。
-- 実機未検証。
+- 実機確認 (0.23.1): `level flags: currentLevelEntity (new)` で解決、矢印の自動クリア・レベル自動進行・速度切替とも正常。v1.1.0 としてリリース。
