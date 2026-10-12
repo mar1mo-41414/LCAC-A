@@ -1,6 +1,6 @@
 # ARCHITECTURE
 
-LCAC-A の仕組み。対象は Arrows 0.21.1 (Unity 6000.0.58f2, IL2CPP metadata v31)。
+LCAC-A の仕組み。対象は Arrows 0.21.1 (Unity 6000.0.58f2, IL2CPP metadata v31) / 0.23.1 (Unity 6000.3.23f1, metadata v39)。
 
 ## 方針
 
@@ -11,6 +11,11 @@ LCAC-A の仕組み。対象は Arrows 0.21.1 (Unity 6000.0.58f2, IL2CPP metadat
   `CADisplayLink` から呼ぶ。フレームとフレームの間に走るため、ECS のエンティティを触ってもゲームと競合しない。
 - il2cpp の初期化前に API を呼ばないよう、`il2cpp_get_corlib()` が非 NULL になるまで待つ。
 - 名前で解決できなかった場合は何もしない (クラッシュさせない)。
+- フィールドのオフセットはハードコードせず、`il2cpp_field_get_offset` で名前から取る。
+- バージョン差は「候補を複数引いて解決できた方を使う」で吸収する。
+  - レベルの完了/失敗: 0.21 は `GameContext.isLevelComplete` (Unique)、0.23 は `GameContext.currentLevelEntity.isLevelComplete`
+  - レベル開始要求: 0.21 は `hasStartLevel` / `hasTryStartLevel`、0.23 は `isStartLevel` / `isTryStartLevel`
+  - チャレンジのプレイボタン: 0.21 は画面直下の `PlayButton`、0.23 は `PlayArea.PlayButton`
 
 ## ゲームの構造
 

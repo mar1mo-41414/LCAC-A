@@ -42,7 +42,7 @@ Get `LCAC-A.dylib` from [Releases](../../releases/latest).
 - Ads are out of scope. An ad stops the loop until you close it
   (use an ad blocker such as [LCAB](https://github.com/mar1mo-41414/LCAB)).
 - If something goes wrong, check `Documents/lcac-a-debug.log` in the app's container.
-- Tested with Arrows 0.21.1. It relies on the game's internal class/method names, so a game update that renames them may break it.
+- Supports Arrows 0.21.1 / 0.23.1. It relies on the game's internal class/method names, so a game update that renames them may break it.
 
 ## Build
 

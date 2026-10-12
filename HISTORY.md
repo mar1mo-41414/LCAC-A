@@ -91,3 +91,20 @@
   dylib 名 `LCAC-A.dylib`、ログ `lcac-a-debug.log` / `[LCAC-A]`、設定キー `LCAC-A.speedIndex` も合わせて変更。
 - 公開に合わせて README を利用者向けに簡潔化し、技術的な解説を docs/ARCHITECTURE.md に切り出し。
 - ゲームのスクリーンショット (Data/) は追跡対象から外した。
+
+## 2026-10-12 Arrows 0.23.1 対応
+- 報告: 0.23.1 (Unity 6000.3.23f1, IL2CPP metadata v39) でボタンは出るが矢印が抜けない。
+  ログ: `method not found: get_isLevelComplete / get_isLevelFailed / get_hasStartLevel / get_hasTryStartLevel` → 解決失敗で全機能停止。
+  対策 (アンチチート) ではなく ECS コンポーネント設計の変更だった。Cpp2IL (pre-release.21) は v39 もそのまま読めた。
+- 変更点:
+  - `LevelComplete` / `LevelFailed` から `[Unique]` が外れ、`GameContext.currentLevelEntity` (GameEntity) 上のフラグに。
+    `ArrowsCompleteSystem` は `currentLevelEntity.isLevelComplete = true`、`ArrowAutoRemoveSystem` / `ArrowClickSystem` もそこを見る。
+    レベルごとにエンティティが変わるので「メニューに戻っても complete が立ちっぱなし」問題は消えた (誤カウント対策はそのまま残す)。
+  - `StartLevel` / `TryStartLevel` は値なしのフラグ (`isStartLevel` / `isTryStartLevel`) に。
+  - `MainMenuService.StartGame()` は内部が `GameConfigExtensions.StartLevel(MainLevelDescription)` に変わったが、呼び方は同じ。
+  - `DailyChallengeScreenView`: `_year` 0xA4→0x7C、`_dayOfYear` 0xA8→0x80。`PlayButton` は新設の
+    `PlayArea (DailyChallengePlayButtonViewBase, @0x48)` 内 `PlayButton (@0x28)` に移動。`StartDailyLevel()` は public になったが処理は同じ。
+  - 矢印まわり (`Blocked`, `AutoRemoveTimer`, `ArrowAutoRemoveSystem` の常時登録) は変化なし。
+- 修正: 旧 (GameContext) と新 (currentLevelEntity) の両方を候補として引き、解決できた方を使う。開始フラグも has*/is* の両対応。
+  チャレンジ画面のフィールドはオフセットのハードコードをやめ、`il2cpp_class_get_field_from_name` + `il2cpp_field_get_offset` で名前から取得。
+- 実機未検証。

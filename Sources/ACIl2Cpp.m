@@ -41,6 +41,7 @@ static uint32_t (*p_method_get_param_count)(const MethodInfo *);
 static BOOL (*p_method_is_generic)(const MethodInfo *);
 static const void *(*p_class_get_type)(Il2CppClass *);
 static void *(*p_type_get_object)(const void *);
+static size_t (*p_field_get_offset)(FieldInfo *);
 
 // ---------------------------------------------------------------------------
 // ゲーム側のメソッド (Cpp2IL ダンプで確認したシグネチャ)
@@ -57,8 +58,14 @@ static Il2CppClass *gContextsClass;
 static const MethodInfo *m_Contexts_get_game;
 static const MethodInfo *m_Ctx_GetEntities;          // Entitas.Context<GameEntity>.GetEntities()
 static const MethodInfo *m_Game_isLevelPlaying;
-static const MethodInfo *m_Game_isLevelComplete;
-static const MethodInfo *m_Game_isLevelFailed;
+// レベルの完了/失敗フラグ。0.21 系は GameContext の Unique フラグ、0.23 系以降は
+// GameContext.currentLevelEntity (GameEntity) 上のフラグ。どちらか解決できた方を使う。
+static const MethodInfo *m_Game_isLevelComplete;      // 旧
+static const MethodInfo *m_Game_isLevelFailed;        // 旧
+static const MethodInfo *m_Game_hasCurrentLevel;      // 新
+static const MethodInfo *m_Game_currentLevelEntity;   // 新
+static const MethodInfo *m_Ent_isLevelComplete;       // 新
+static const MethodInfo *m_Ent_isLevelFailed;         // 新
 static const MethodInfo *m_Game_isCleanupLevel;
 static const MethodInfo *m_Game_hasArrowGrid;
 static const MethodInfo *m_Ent_hasArrowId;
@@ -71,8 +78,9 @@ static const MethodInfo *m_Ent_ReplaceAutoRemoveTimer;
 
 static const MethodInfo *m_Contexts_get_ui;
 static const MethodInfo *m_Contexts_get_service;
-static const MethodInfo *m_Game_hasStartLevel;
-static const MethodInfo *m_Game_hasTryStartLevel;
+// レベル開始要求。0.21 系は値付き (hasStartLevel)、0.23 系以降はフラグ (isStartLevel)。
+static const MethodInfo *m_Game_startLevel;
+static const MethodInfo *m_Game_tryStartLevel;
 static const MethodInfo *m_Ui_isActiveMainMenuScreen;
 static const MethodInfo *m_Svc_get_popupService;     // -> PopupServiceComponent (.Value @0x10)
 static const MethodInfo *m_Svc_get_mainMenuService;  // -> MainMenuServiceComponent (.Value @0x10)
@@ -98,9 +106,11 @@ static Il2CppClass *gDailyScreenClass;               // DailyChallengeScreenView
 static void *gDailyScreenTypeObject;                 // System.Type (FindFirstObjectByType 用)
 static const MethodInfo *m_Daily_StartDailyLevel;     // private void StartDailyLevel()
 static const MethodInfo *m_UnityObject_FindFirstByType; // UnityEngine.Object.FindFirstObjectByType(Type)
-static const size_t kDailyPlayButtonOffset = 0x50;    // DailyChallengeScreenView.PlayButton
-static const size_t kDailyYearOffset = 0xA4;          // _year
-static const size_t kDailyDayOffset = 0xA8;           // _dayOfYear
+// フィールドはオフセットをハードコードせず名前から引く (アップデートでずれるため)。
+static size_t gDailyYearOffset;                       // _year
+static size_t gDailyDayOffset;                        // _dayOfYear
+static size_t gDailyPlayAreaOffset;                   // 0.23+: PlayArea (DailyChallengePlayButtonViewBase)。0 なら無し
+static size_t gDailyPlayButtonOffset;                 // PlayButton (旧: 画面直下 / 新: PlayArea 内)
 
 static BOOL gResolved = NO;
 
@@ -129,6 +139,7 @@ static BOOL ACLoadApi(void) {
     LOAD_API(p_method_is_generic, "il2cpp_method_is_generic");
     LOAD_API(p_class_get_type, "il2cpp_class_get_type");
     LOAD_API(p_type_get_object, "il2cpp_type_get_object");
+    LOAD_API(p_field_get_offset, "il2cpp_field_get_offset");
     loaded = YES;
     return YES;
 }
@@ -155,6 +166,24 @@ static const MethodInfo *ACFindMethod(Il2CppClass *klass, const char *name, int 
     }
     ACLog(@"method not found: %s/%d", name, argc);
     return NULL;
+}
+
+/// 見つからなくてもログを出さない版 (バージョン差を吸収するための候補探し用)。
+static const MethodInfo *ACFindMethodQuiet(Il2CppClass *klass, const char *name, int argc) {
+    for (Il2CppClass *k = klass; k; k = p_class_get_parent(k)) {
+        const MethodInfo *mi = p_class_get_method_from_name(k, name, argc);
+        if (mi) return mi;
+    }
+    return NULL;
+}
+
+/// klass (と親) のフィールドのオフセット。無ければ 0。
+static size_t ACFieldOffset(Il2CppClass *klass, const char *name) {
+    for (Il2CppClass *k = klass; k; k = p_class_get_parent(k)) {
+        FieldInfo *f = p_class_get_field_from_name(k, name);
+        if (f) return p_field_get_offset(f);
+    }
+    return 0;
 }
 
 BOOL ACIl2CppResolve(void) {
@@ -192,8 +221,19 @@ BOOL ACIl2CppResolve(void) {
 
     m_Ctx_GetEntities = ACFindMethod(gameContext, "GetEntities", 0);
     m_Game_isLevelPlaying = ACFindMethod(gameContext, "get_isLevelPlaying", 0);
-    m_Game_isLevelComplete = ACFindMethod(gameContext, "get_isLevelComplete", 0);
-    m_Game_isLevelFailed = ACFindMethod(gameContext, "get_isLevelFailed", 0);
+    m_Game_isLevelComplete = ACFindMethodQuiet(gameContext, "get_isLevelComplete", 0);
+    m_Game_isLevelFailed = ACFindMethodQuiet(gameContext, "get_isLevelFailed", 0);
+    m_Game_hasCurrentLevel = ACFindMethodQuiet(gameContext, "get_hasCurrentLevel", 0);
+    m_Game_currentLevelEntity = ACFindMethodQuiet(gameContext, "get_currentLevelEntity", 0);
+    m_Ent_isLevelComplete = ACFindMethodQuiet(gameEntity, "get_isLevelComplete", 0);
+    m_Ent_isLevelFailed = ACFindMethodQuiet(gameEntity, "get_isLevelFailed", 0);
+    BOOL oldLevelFlags = m_Game_isLevelComplete && m_Game_isLevelFailed;
+    BOOL newLevelFlags = m_Game_hasCurrentLevel && m_Game_currentLevelEntity && m_Ent_isLevelComplete && m_Ent_isLevelFailed;
+    if (!oldLevelFlags && !newLevelFlags) {
+        ACLog(@"level complete/failed flags not found (neither GameContext nor currentLevelEntity)");
+        return NO;
+    }
+    if (!oldLevelFlags) { m_Game_isLevelComplete = NULL; m_Game_isLevelFailed = NULL; }
     m_Game_isCleanupLevel = ACFindMethod(gameContext, "get_isCleanupLevel", 0);
     m_Game_hasArrowGrid = ACFindMethod(gameContext, "get_hasArrowGrid", 0);
 
@@ -207,8 +247,15 @@ BOOL ACIl2CppResolve(void) {
 
     m_Contexts_get_ui = ACFindMethod(contexts, "get_ui", 0);
     m_Contexts_get_service = ACFindMethod(contexts, "get_service", 0);
-    m_Game_hasStartLevel = ACFindMethod(gameContext, "get_hasStartLevel", 0);
-    m_Game_hasTryStartLevel = ACFindMethod(gameContext, "get_hasTryStartLevel", 0);
+    m_Game_startLevel = ACFindMethodQuiet(gameContext, "get_hasStartLevel", 0)
+        ?: ACFindMethodQuiet(gameContext, "get_isStartLevel", 0);
+    m_Game_tryStartLevel = ACFindMethodQuiet(gameContext, "get_hasTryStartLevel", 0)
+        ?: ACFindMethodQuiet(gameContext, "get_isTryStartLevel", 0);
+    if (!m_Game_startLevel || !m_Game_tryStartLevel) {
+        ACLog(@"start level flags not found");
+        return NO;
+    }
+    ACLog(@"level flags: %s", oldLevelFlags ? "GameContext (old)" : "currentLevelEntity (new)");
     m_Ui_isActiveMainMenuScreen = ACFindMethod(uiContext, "get_isActiveMainMenuScreen", 0);
     m_Svc_get_popupService = ACFindMethod(serviceContext, "get_popupService", 0);
     m_Svc_get_mainMenuService = ACFindMethod(serviceContext, "get_mainMenuService", 0);
@@ -228,11 +275,11 @@ BOOL ACIl2CppResolve(void) {
 
     const MethodInfo *all[] = {
         m_Contexts_get_game, m_Ctx_GetEntities,
-        m_Game_isLevelPlaying, m_Game_isLevelComplete, m_Game_isLevelFailed,
+        m_Game_isLevelPlaying,
         m_Game_isCleanupLevel, m_Game_hasArrowGrid,
         m_Ent_hasArrowId, m_Ent_isMoving, m_Ent_isDestroyed, m_Ent_hasBlocked,
         m_Ent_isTryToMove, m_Ent_hasAutoRemoveTimer, m_Ent_ReplaceAutoRemoveTimer,
-        m_Contexts_get_ui, m_Contexts_get_service, m_Game_hasStartLevel, m_Game_hasTryStartLevel,
+        m_Contexts_get_ui, m_Contexts_get_service,
         m_Ui_isActiveMainMenuScreen, m_Svc_get_popupService, m_Svc_get_mainMenuService,
         m_Popup_HasAnyPopupOrDialogOpen, m_MainMenu_StartGame, m_Popup_CloseAll,
         m_UiCtx_GetEntities, m_UiEnt_isOpen, m_UiEnt_setIsOpen, m_UiEnt_hasGameEntityRef,
@@ -269,6 +316,22 @@ BOOL ACIl2CppResolve(void) {
             }
         }
         gDailyScreenTypeObject = p_type_get_object(p_class_get_type(gDailyScreenClass));
+
+        gDailyYearOffset = ACFieldOffset(gDailyScreenClass, "_year");
+        gDailyDayOffset = ACFieldOffset(gDailyScreenClass, "_dayOfYear");
+        gDailyPlayButtonOffset = ACFieldOffset(gDailyScreenClass, "PlayButton");
+        gDailyPlayAreaOffset = 0;
+        if (!gDailyPlayButtonOffset) {
+            // 0.23+: プレイボタンは PlayArea (DailyChallengePlayButtonViewBase) の中に移動。
+            Il2CppClass *playAreaBase = p_class_from_name(image, "", "DailyChallengePlayButtonViewBase");
+            gDailyPlayAreaOffset = ACFieldOffset(gDailyScreenClass, "PlayArea");
+            gDailyPlayButtonOffset = playAreaBase ? ACFieldOffset(playAreaBase, "PlayButton") : 0;
+        }
+        if (!gDailyYearOffset || !gDailyDayOffset || !gDailyPlayButtonOffset) {
+            ACLog(@"daily fields not found (year=%zu day=%zu area=%zu button=%zu) - daily disabled",
+                  gDailyYearOffset, gDailyDayOffset, gDailyPlayAreaOffset, gDailyPlayButtonOffset);
+            m_Daily_StartDailyLevel = NULL;
+        }
     }
     ACLog(@"daily support: screen=%p start=%p find=%p type=%p", gDailyScreenClass, m_Daily_StartDailyLevel,
           m_UnityObject_FindFirstByType, gDailyScreenTypeObject);
@@ -328,6 +391,21 @@ static BOOL ACEnsureResolved(void) {
     return ACIl2CppResolve();
 }
 
+/// 現在のレベルの完了/失敗フラグ (バージョンに応じて GameContext か currentLevelEntity から)。
+static void ACLevelFlags(void *game, BOOL *complete, BOOL *failed) {
+    *complete = NO; *failed = NO;
+    if (m_Game_isLevelComplete) {
+        *complete = CallBool(m_Game_isLevelComplete, game);
+        *failed = CallBool(m_Game_isLevelFailed, game);
+        return;
+    }
+    if (!CallBool(m_Game_hasCurrentLevel, game)) return;
+    void *level = CallObj(m_Game_currentLevelEntity, game);
+    if (!level) return;
+    *complete = CallBool(m_Ent_isLevelComplete, level);
+    *failed = CallBool(m_Ent_isLevelFailed, level);
+}
+
 ACGameState ACIl2CppQueryState(void) {
     ACGameState st = {0};
     if (!ACEnsureResolved()) return st;
@@ -339,9 +417,8 @@ ACGameState ACIl2CppQueryState(void) {
 
     st.ready = YES;
     st.levelPlaying = CallBool(m_Game_isLevelPlaying, game);
-    st.levelComplete = CallBool(m_Game_isLevelComplete, game);
-    st.levelFailed = CallBool(m_Game_isLevelFailed, game);
-    st.startPending = CallBool(m_Game_hasStartLevel, game) || CallBool(m_Game_hasTryStartLevel, game);
+    ACLevelFlags(game, &st.levelComplete, &st.levelFailed);
+    st.startPending = CallBool(m_Game_startLevel, game) || CallBool(m_Game_tryStartLevel, game);
     st.mainMenuActive = CallBool(m_Ui_isActiveMainMenuScreen, ui);
     void *popup = ACGetService(contexts, m_Svc_get_popupService, gPopupServiceClass);
     st.popupOpen = popup ? CallBool(m_Popup_HasAnyPopupOrDialogOpen, popup) : YES; // 不明なら開いている扱い
@@ -371,9 +448,11 @@ ACStartResult ACIl2CppStartNext(void) {
 
     void *daily = ACFindDailyScreen();
     if (daily) {
-        int year = *(int *)((uint8_t *)daily + kDailyYearOffset);
-        int day = *(int *)((uint8_t *)daily + kDailyDayOffset);
-        void *playButton = *(void **)((uint8_t *)daily + kDailyPlayButtonOffset);
+        int year = *(int *)((uint8_t *)daily + gDailyYearOffset);
+        int day = *(int *)((uint8_t *)daily + gDailyDayOffset);
+        void *buttonOwner = daily;
+        if (gDailyPlayAreaOffset) buttonOwner = *(void **)((uint8_t *)daily + gDailyPlayAreaOffset);
+        void *playButton = buttonOwner ? *(void **)((uint8_t *)buttonOwner + gDailyPlayButtonOffset) : NULL;
         if (year == 0) {
             // クリア直後は画面が作り直され、勝利演出の完了 (OnAnimComplete) 後に日が選択される。
             return ACStartDailyNotReady;
@@ -476,8 +555,9 @@ BOOL ACIl2CppStep(void) {
     // レベルプレイ中以外 (メニュー・クリア演出・失敗画面) は何もしない。
     if (!CallBool(m_Game_hasArrowGrid, game)) return NO;
     if (!CallBool(m_Game_isLevelPlaying, game)) return NO;
-    if (CallBool(m_Game_isLevelComplete, game)) return NO;
-    if (CallBool(m_Game_isLevelFailed, game)) return NO;
+    BOOL complete, failed;
+    ACLevelFlags(game, &complete, &failed);
+    if (complete || failed) return NO;
     if (CallBool(m_Game_isCleanupLevel, game)) return NO;
 
     Il2CppArray *entities = (Il2CppArray *)CallObj(m_Ctx_GetEntities, game);
